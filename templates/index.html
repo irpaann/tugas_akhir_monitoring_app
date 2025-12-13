@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Monitoring Dashboard</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+
+<nav class="navbar navbar-light bg-white shadow-sm mb-4">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">
+      <img src="https://getbootstrap.com/docs/5.3/assets/brand/bootstrap-logo.svg"
+           width="30" height="24" alt="Logo">
+      Log Monitoring
+    </a>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="card shadow-sm mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Recent Logs (Compact)</h5>
+    </div>
+
+    <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+            <table id="logTable" class="table table-sm table-striped table-hover mb-0 align-middle">
+                <thead class="table-secondary small">
+                    <tr>
+                        <th>ID</th>
+                        <th>Time</th>
+                        <th>IP</th>
+                        <th>Method</th>
+                        <th>Status</th>
+                        <th>Path</th>
+                        <th>Full URL</th>
+                        <th>UA</th>
+                        <th>Payload</th>
+                        <th>Threat</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+
+        </div>
+    </div>
+</div>
+
+</div>
+
+<div class="container px-3">
+
+    <div class="row g-3">
+
+        <div class="col-sm-12 col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Requests per Minute</h5>
+                    <canvas id="chartRequests"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-12 col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Request Methods</h5>
+                    <canvas id="chartMethods"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-12 col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Status Codes</h5>
+                    <canvas id="chartStatus"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+
+<div class="modal fade" id="payloadModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Payload Detail</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="payloadModalBody" class="small"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>
