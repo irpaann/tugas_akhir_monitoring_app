@@ -1,60 +1,89 @@
+
 body {
-    font-family: Arial;
-    padding: 20px;
-    background: #f5f5f5;
+  font-family: Arial, sans-serif;
+  background: #f5f5f5;
 }
 
+/* TABLE */
 table {
-    width: 100%;
-    background: white;
-    border-collapse: collapse;
+  width: 100%;
+  background: white;
+  border-collapse: collapse;
 }
 
 th {
-    background: #222;
-    color: white;
+  background: #222;
+  color: white;
 }
 
 td, th {
-    border: 1px solid #ccc;
-    padding: 6px;
+  border: 1px solid #ccc;
+  padding: 6px;
 }
 
 pre {
-    white-space: pre-wrap;
+  white-space: pre-wrap;
 }
-/* ===== SIDEBAR ===== */
+
+@media (max-width: 768px) {
+    .sidebar {
+        display: none;
+    }
+}
+
+/* SIDEBAR */
+
+/* SIDEBAR BASE */
 .sidebar {
-    background: #1e1e2f;
-    color: #fff;
-    min-height: calc(100vh - 56px);
-    padding-top: 15px;
+    background: #ffffff;
+    border-right: 1px solid #dee2e6;
+    min-height: calc(100vh - 70px);
+    padding: 1rem;
 }
 
-.sidebar-header {
-    padding: 12px 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
+/* MOBILE MODE */
+@media (max-width: 768px) {
+    .sidebar-wrapper {
+        position: fixed;
+        top: 70px;
+        left: -70%;
+        width: 70%;
+        height: 100%;
+        z-index: 1050;
+        transition: left 0.3s ease;
+        box-shadow: 2px 0 8px rgba(0,0,0,0.15);
+        background: white;
+    }
+
+    .sidebar-wrapper.show {
+        left: 0;
+    }
+
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.4);
+        z-index: 1040;
+    }
+
+    .sidebar-overlay.show {
+        display: block;
+    }
+}
+.sidebar .nav-link {
+  color: #495057;
+  border-radius: .375rem;
+  padding: .5rem .75rem;
 }
 
-.sidebar-menu {
-    list-style: none;
-    padding: 0;
-    margin: 0;
+.sidebar .nav-link:hover {
+  background: #f1f3f5;
 }
 
-.sidebar-menu li a {
-    display: block;
-    padding: 10px 20px;
-    color: #cfd3ff;
-    text-decoration: none;
+.sidebar .nav-link.active {
+  background: #e7f1ff;
+  color: #0d6efd;
+  font-weight: 500;
 }
 
-.sidebar-menu li a i {
-    margin-right: 10px;
-}
-
-.sidebar-menu li a:hover,
-.sidebar-menu li.active a {
-    background: #0d6efd;
-    color: #fff;
-}
