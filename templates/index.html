@@ -23,6 +23,64 @@
   <div class="card shadow-sm mb-4">
     <div class="card-header">
         <h5 class="mb-0">Recent Logs (Compact)</h5>
+        <!-- FILTER PANEL -->
+        <div class="card mb-3">
+            <div class="card-body py-2">
+                <div class="row g-2 align-items-end">
+
+                    <div class="col-6 col-md-2">
+                        <label class="form-label small">IP</label>
+                        <input id="filterIp" type="text"
+                            class="form-control form-control-sm"
+                            placeholder="192.168.x.x">
+                    </div>
+
+                    <div class="col-6 col-md-2">
+                        <label class="form-label small">Method</label>
+                        <select id="filterMethod" class="form-select form-select-sm">
+                            <option value="">All</option>
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-md-2">
+                        <label class="form-label small">Status</label>
+                        <select id="filterStatus" class="form-select form-select-sm">
+                            <option value="">All</option>
+                            <option value="200">200</option>
+                            <option value="304">304</option>
+                            <option value="404">404</option>
+                            <option value="401">401</option>
+                            <option value="403">403</option>
+                            <option value="500">500</option>
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">From</label>
+                        <input id="filterStart"
+                            type="datetime-local"
+                            class="form-control form-control-sm">
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">To</label>
+                        <input id="filterEnd"
+                            type="datetime-local"
+                            class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-6 col-md-2">
+                        <button class="btn btn-sm btn-primary w-100"
+                                onclick="loadLogs();loadCharts();">
+                            Apply
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <div class="card-body p-0">
@@ -86,7 +144,7 @@
 
 </div>
 
-
+<!--PAYLOAD MODAL-->
 <div class="modal fade" id="payloadModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -101,8 +159,43 @@
   </div>
 </div>
 
+
+<!-- USER AGENT MODAL -->
+<div class="modal fade" id="uaModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">User Agent Detail</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="uaModalBody" class="small mb-0"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- RESPONSE MODAL -->
+<div class="modal fade" id="responseModal">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Response Detail</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="responseModalBody" class="small"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
 <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
+
+
+<!--bantu buatkan saya sibebar yang bagus clean, stylenya tida jauh dari teman seperti yang ada di code itu
+

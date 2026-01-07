@@ -22,30 +22,103 @@ def dashboard():
 @app.route("/api/logs")
 def api_logs():
     db = get_db()
-    rows = db.execute("""
-        SELECT id, timestamp, ip, method, path,full_url, status, user_agent, payload_preview, threat_score
-        FROM logs
-        ORDER BY id DESC
-        LIMIT 20
-    """).fetchall()
 
-    logs = [
-        {
-            "id": r["id"],
-            "timestamp": r["timestamp"],
-            "ip": r["ip"],
-            "method": r["method"],
-            "path": r["path"],
-            "full_url": r["full_url"],
-            "status": r["status"],
-            "user_agent": r["user_agent"],
-            "payload": r["payload_preview"],
-            "threat_score": r["threat_score"]
-        }
-        for r in rows
-    ]
+    filters = []
+    params = []
+
+
+    start = request.args.get("start")
+    if start:
+        filters.append("timestamp >= ?")
+        params.append(start.replace("T", " ") + ":00")
+
+    end = request.args.get("end")
+    if end:
+        filters.append("timestamp <= ?")
+        params.append(end.replace("T", " ") + ":59")
+
+
+    ip = request.args.get("ip")
+    if ip:
+        filters.append("ip LIKE ?")
+        params.append(f"%{ip}%")
+
+    method = request.args.get("method")
+    if method:
+        filters.append("method = ?")
+        params.append(method)
+
+    status = request.args.get("status")
+    if status:
+        filters.append("status = ?")
+        params.append(status)
+
+    where_clause = ""
+    if filters:
+        where_clause = "WHERE " + " AND ".join(filters)
+
+    query = f"""
+        SELECT id, timestamp, ip, method, path, full_url,
+               status, user_agent, payload_preview, threat_score
+        FROM logs
+        {where_clause}
+        ORDER BY timestamp  DESC
+        LIMIT 100
+    """
+
+    rows = db.execute(query, params).fetchall()
+
+    logs = [{
+        "id": r["id"],
+        "timestamp": r["timestamp"],
+        "ip": r["ip"],
+        "method": r["method"],
+        "path": r["path"],
+        "full_url": r["full_url"],
+        "status": r["status"],
+        "user_agent": r["user_agent"],
+        "payload": r["payload_preview"],
+        "threat_score": r["threat_score"]
+    } for r in rows]
 
     return jsonify({"logs": logs})
+
+
+
+def build_filters(request):
+    filters = []
+    params = []
+
+    start = request.args.get("start")
+    if start:
+        filters.append("timestamp >= ?")
+        params.append(start.replace("T", " ") + ":00")
+
+    end = request.args.get("end")
+    if end:
+        filters.append("timestamp <= ?")
+        params.append(end.replace("T", " ") + ":59")
+
+    ip = request.args.get("ip")
+    if ip:
+        filters.append("ip LIKE ?")
+        params.append(f"%{ip}%")
+
+    method = request.args.get("method")
+    if method:
+        filters.append("method = ?")
+        params.append(method)
+
+    status = request.args.get("status")
+    if status:
+        filters.append("status = ?")
+        params.append(status)
+
+    where_clause = ""
+    if filters:
+        where_clause = "WHERE " + " AND ".join(filters)
+
+    return where_clause, params
 
 
 # ============================
@@ -73,7 +146,7 @@ def receive_log():
         db.execute("""
             INSERT INTO logs 
             (timestamp, ip, method, path, full_url, status, payload_preview, user_agent, threat_score)
-            VALUES (DATETIME('now'), ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (DATETIME('now','+8 hours'), ?, ?, ?, ?, ?, ?, ?, ?)
         """, (ip, method, path, full_url, status, payload_preview, ua, 0))
 
         db.commit()
@@ -88,28 +161,32 @@ def receive_log():
 @app.route("/api/stats/requests")
 def stats_requests():
     db = get_db()
-    rows = db.execute("""
+    where, params = build_filters(request)
+
+    rows = db.execute(f"""
         SELECT strftime('%H:%M', timestamp) AS minute, COUNT(*) AS total
         FROM logs
+        {where}
         GROUP BY minute
-        ORDER BY minute DESC
-        LIMIT 20
-    """).fetchall()
+        ORDER BY minute
+    """, params).fetchall()
 
     return jsonify({
-        "labels": [r["minute"] for r in rows][::-1],
-        "values": [r["total"] for r in rows][::-1]
+        "labels": [r["minute"] for r in rows],
+        "values": [r["total"] for r in rows]
     })
-
 
 @app.route("/api/stats/methods")
 def stats_methods():
     db = get_db()
-    rows = db.execute("""
+    where, params = build_filters(request)
+
+    rows = db.execute(f"""
         SELECT method, COUNT(*) AS total
         FROM logs
+        {where}
         GROUP BY method
-    """).fetchall()
+    """, params).fetchall()
 
     return jsonify({
         "labels": [r["method"] for r in rows],
@@ -119,17 +196,19 @@ def stats_methods():
 @app.route("/api/stats/status")
 def stats_status():
     db = get_db()
-    rows = db.execute("""
+    where, params = build_filters(request)
+
+    rows = db.execute(f"""
         SELECT status, COUNT(*) AS total
         FROM logs
+        {where}
         GROUP BY status
-    """).fetchall()
+    """, params).fetchall()
 
     return jsonify({
         "labels": [str(r["status"]) for r in rows],
         "values": [r["total"] for r in rows]
     })
-
 
 # ============================
 # Run Server

@@ -23,3 +23,38 @@ td, th {
 pre {
     white-space: pre-wrap;
 }
+/* ===== SIDEBAR ===== */
+.sidebar {
+    background: #1e1e2f;
+    color: #fff;
+    min-height: calc(100vh - 56px);
+    padding-top: 15px;
+}
+
+.sidebar-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.sidebar-menu {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.sidebar-menu li a {
+    display: block;
+    padding: 10px 20px;
+    color: #cfd3ff;
+    text-decoration: none;
+}
+
+.sidebar-menu li a i {
+    margin-right: 10px;
+}
+
+.sidebar-menu li a:hover,
+.sidebar-menu li.active a {
+    background: #0d6efd;
+    color: #fff;
+}
