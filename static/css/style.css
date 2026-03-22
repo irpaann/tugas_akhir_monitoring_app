@@ -39,38 +39,10 @@ pre {
     border-right: 1px solid #dee2e6;
     min-height: calc(100vh - 70px);
     padding: 1rem;
+    position: sticky;
 }
 
-/* MOBILE MODE */
-@media (max-width: 768px) {
-    .sidebar-wrapper {
-        position: fixed;
-        top: 70px;
-        left: -70%;
-        width: 70%;
-        height: 100%;
-        z-index: 1050;
-        transition: left 0.3s ease;
-        box-shadow: 2px 0 8px rgba(0,0,0,0.15);
-        background: white;
-    }
 
-    .sidebar-wrapper.show {
-        left: 0;
-    }
-
-    .sidebar-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(0,0,0,0.4);
-        z-index: 1040;
-    }
-
-    .sidebar-overlay.show {
-        display: block;
-    }
-}
 .sidebar .nav-link {
   color: #495057;
   border-radius: .375rem;
@@ -87,3 +59,10 @@ pre {
   font-weight: 500;
 }
 
+/* Mencegah teks panjang merusak tabel */
+.table td {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

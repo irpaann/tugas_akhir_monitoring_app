@@ -1,33 +1,10 @@
-// ======================
-// UTIL FUNCTIONS
-// ======================
-
-function threatBadge(score) {
-    if (score >= 70) return "bg-danger";
-    if (score >= 40) return "bg-warning text-dark";
-    return "bg-success";
-}
-
-function isSuspiciousPayload(payload) {
-    if (!payload) return false;
-
-    const patterns = [
-        /or\s+1=1/i,
-        /union\s+select/i,
-        /<script.*?>/i,
-        /--/,
-        /\/\.\./,
-        /sleep\(/i,
-        /benchmark\(/i
-    ];
-
-    return patterns.some(p => p.test(payload));
-}
+import { checkThreat } from './config-security.js';
 
 function truncate(text, max = 40) {
     if (!text) return "";
     return text.length > max ? text.substring(0, max) + "..." : text;
 }
+
 
 // ======================
 // LOAD LOGS
@@ -43,9 +20,10 @@ function loadLogs() {
             tbody.innerHTML = "";
 
             data.logs.forEach(log => {
-
-                // 🔥 PENTING: harus DI SINI
-                const suspicious = isSuspiciousPayload(log.payload);
+                // 🔥 Memanggil checkThreat dari config-security.js
+                const analysis = checkThreat(log.payload);
+                const suspicious = analysis.isSuspicious; 
+                const threatType = analysis.type; // Contoh: "SQL Injection", "XSS", dll.
                 const preview = truncate(log.payload);
 
                 const tr = document.createElement("tr");
@@ -81,18 +59,58 @@ function loadLogs() {
                     </td>
 
                     <td>
-                        <span class="badge ${threatBadge(log.threat_score)}">
-                            ${log.threat_score}
+                        <span class="badge ${suspicious ? "bg-outline-danger text-danger" : "bg-light text-muted"}" 
+                              style="border: 1px solid ${suspicious ? 'red' : '#ccc'}">
+                            ${threatType}
                         </span>
                     </td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" 
+                                onclick="blockIP('${log.ip}', '${threatType}')">
+                            Block
+                        </button>
+                    </td>
                 `;
-
 
                 tbody.appendChild(tr);
             });
         })
         .catch(err => console.error("Load logs error:", err));
 }
+
+
+// Fungsi untuk mengirim perintah blokir ke API
+window.blockIP = function(ip, reason) {
+    if (!confirm(`Apakah Anda yakin ingin memblokir IP ${ip}?`)) return;
+
+    fetch("/api/blacklist/block", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            ip: ip,
+            reason: reason || "Manual Block dari Dashboard",
+            duration: 24, // Blokir selama 24 jam
+            blocked_by: "admin"
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === "blocked") {
+            alert(`IP ${ip} berhasil diblokir!`);
+            // Refresh logs agar status terbaru muncul (opsional)
+            loadLogs();
+        } else {
+            alert("Gagal memblokir: " + (data.error || "Unknown error"));
+        }
+    })
+    .catch(err => {
+        console.error("Block Error:", err);
+        alert("Terjadi kesalahan koneksi ke server.");
+    });
+};
+
 
 // ======================
 // PAYLOAD MODAL
@@ -208,6 +226,13 @@ function loadCharts() {
 
 loadLogs();
 loadCharts();
-setInterval(loadCharts, 5000);
+setInterval(() => {
+    loadLogs(); 
+    loadCharts();
+}, 5000);
 
-// dimana saya bisa melihat response nya, apa saya buat lagi fitur yaa?? sebenarnnya dari dulu saya ingin membuat beberapa fitur saya inginn pnya side bar, tapi saya bingnung apa yang mau saay tambahkan sekranga saya bepikir untuk menambhakan full monitoring yang menampilkan request dan response, ip yang di blokir dll,  menurutmnu apa lagi yang perlu saya masukkan??  
+// dimana saya bisa melihat response nya, 
+// apa saya buat lagi fitur yaa?? 
+// sebenarnnya dari dulu saya ingin membuat beberapa fitur saya inginn pnya side bar, 
+// tapi saya bingnung apa yang mau saay tambahkan sekranga saya bepikir untuk menambhakan full monitoring yang menampilkan request, response, ip yang di blokir dll,  
+// menurutmnu apa lagi yang perlu saya masukkan??  

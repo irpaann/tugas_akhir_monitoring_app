@@ -35,15 +35,20 @@ CREATE INDEX IF NOT EXISTS idx_threats_ip ON threats (ip);
 
 
 -- ============================
--- TABLE: blocked_ips
+-- BLACKLIST IP
 -- ============================
-CREATE TABLE IF NOT EXISTS blocked_ips (
+CREATE TABLE IF NOT EXISTS blacklist_ip (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ip TEXT UNIQUE NOT NULL,
-    reason TEXT,
+    ip TEXT NOT NULL,
+    reason TEXT NOT NULL,
     blocked_at DATETIME NOT NULL,
-    total_attacks INTEGER DEFAULT 0
+    expires_at DATETIME,
+    blocked_by TEXT DEFAULT 'system',
+    is_active INTEGER DEFAULT 1,
+    total_hits INTEGER DEFAULT 0,
+    last_seen DATETIME
 );
+
 
 
 -- ============================
