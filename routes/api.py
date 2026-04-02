@@ -1,13 +1,110 @@
 from flask import request, jsonify, session, redirect, url_for, make_response
-from db import get_db
-from datetime import datetime, timedelta
 from models.rule_engine import check_rule_based
+from datetime import datetime, timedelta
+from utils.security_engine import SecurityEngine
+from db import get_db
+from markupsafe import escape
 import os
 import io
 import csv
 
+
+engine = SecurityEngine()
 def register_api(app):
     
+    # ============================================================
+    # 2. HELPER: PROSES BLACKLIST (VERSI PANJANG)
+    # Fungsi ini ditaruh di sini agar bisa digunakan oleh /api/screen
+    # ============================================================
+    def _process_blacklist(client_ip, attack_type):
+        if client_ip == "10.210.1.23":
+            print(f"[DEBUG] IP {client_ip} Terdeteksi menyerang ({attack_type}), tapi tidak diblacklist karena Whitelist Testing.")
+            return 0 # Langsung keluar dari fungsi tanpa simpan ke DB blacklist
+        # --------------------------------------------
+        db = get_db()
+        db.execute("UPDATE blacklist_ip SET is_active = 0 WHERE is_active = 1 AND expires_at < DATETIME('now', '+8 hours')")
+        
+        history = db.execute("SELECT total_hits FROM blacklist_ip WHERE ip = ? ORDER BY id DESC LIMIT 1", (client_ip,)).fetchone()
+        violation_count = (history["total_hits"] + 1) if history else 1
+        
+        # Konsisten gunakan detik (10s, 20s, 30s...)
+        base_seconds = 10
+        total_duration = base_seconds * violation_count
+
+        existing = db.execute("SELECT id FROM blacklist_ip WHERE ip = ? AND is_active = 1", (client_ip,)).fetchone()
+
+        if not existing:
+            db.execute(f"""
+                INSERT INTO blacklist_ip (ip, reason, blocked_at, expires_at, blocked_by, is_active, total_hits, last_seen)
+                VALUES (?, ?, DATETIME('now','+8 hours'), DATETIME('now','+8 hours', '+{total_duration} seconds'), 'ML-System', 1, ?, DATETIME('now','+8 hours'))
+            """, (client_ip, attack_type, violation_count))
+        else:
+            db.execute(f"UPDATE blacklist_ip SET total_hits = total_hits + 1, last_seen = DATETIME('now','+8 hours'), expires_at = DATETIME(expires_at, '+{base_seconds} seconds') WHERE ip = ? AND is_active = 1", (client_ip,))
+        db.commit()
+        return total_duration
+    
+    # 3. TAHAP 1-3: SCREENING API (INTI SKRIPSI KAMU)
+    # ============================================================
+    @app.route("/api/screen", methods=["POST"])
+    def api_screen():
+        data = request.get_json()
+        client_ip = data.get("ip")
+        path = data.get("url", "")
+        payload = data.get("payload", "")
+        ua = data.get("ua", "")
+        method = data.get("method", "GET")
+        full_url = data.get("full_url", "")
+
+        db = get_db()
+        # 1. Ambil waktu request terakhir dari IP ini
+        last_log = db.execute("SELECT timestamp FROM logs WHERE ip = ? ORDER BY id DESC LIMIT 1", (client_ip,)).fetchone()
+
+        time_diff = 0.0
+
+        if last_log:
+            try:
+                # Format dari SQLite biasanya string: 'YYYY-MM-DD HH:MM:SS'
+                last_time = datetime.strptime(last_log["timestamp"], "%Y-%m-%d %H:%M:%S")
+                # Waktu sekarang disamakan dengan format DB (waktu lokal + 8 jam jika merujuk kode Anda)
+                current_time = datetime.now()
+                time_diff = (current_time - last_time).total_seconds()
+                
+                # Jika time_diff negatif karena pergeseran waktu, jadikan 0
+                if time_diff < 0: time_diff = 0.0 
+            except Exception as e:
+                print(f"[DEBUG] Error parsing waktu: {e}")
+                time_diff = 0.0
+
+        # 2. Panggil Security Engine (SEKARANG KIRIM 5 PARAMETER: TAMBAH time_diff)
+        status, reason, threat_score = engine.analyze(path, payload, ua, method, time_diff)
+        
+        # [DEBUG] Tampilkan di terminal
+        print(f"[SCREEN] IP: {client_ip} | Status: {status} | Score: {threat_score}% | Reason: {reason} | TimeDiff: {time_diff}s")
+
+        # 2. Simpan ke database logs (TAMBAHKAN threat_score DI SINI)
+        db.execute("""
+            INSERT INTO logs (timestamp, ip, path, full_url, method, status, payload_preview, reason, user_agent, threat_score)
+            VALUES (DATETIME('now','+8 hours'), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            client_ip, 
+            path, 
+            full_url, 
+            method, 
+            "200" if status == "Normal" else "403", 
+            str(payload)[:200], 
+            reason if reason else "Normal", 
+            ua, 
+            threat_score # <-- Variabel baru dimasukkan ke DB
+        ))
+        db.commit()
+
+        # 3. Proses eksekusi (Blokir atau Izinkan)
+        if status == "Attack":
+            _process_blacklist(client_ip, reason) 
+            # Kembalikan skor juga agar script attacker kamu bisa mencetaknya
+            return jsonify({"action": "BLOCK", "reason": reason, "threat_score": threat_score}), 200
+            
+        return jsonify({"action": "ALLOW", "threat_score": threat_score}), 200
     # ============================
     # API: GET Logs
     # ============================
@@ -68,8 +165,8 @@ def register_api(app):
             "path": r["path"],
             "full_url": r["full_url"],
             "status": r["status"],
-            "user_agent": r["user_agent"],
-            "payload": r["payload_preview"],
+            "user_agent": str(escape(r["user_agent"])),
+            "payload": str(escape(r["payload_preview"])),
             "threat_score": r["threat_score"]
         } for r in rows]
 
@@ -133,21 +230,45 @@ def register_api(app):
         data = [dict(r) for r in rows]
         return jsonify({"ips": data})
 
+
     @app.route("/api/blacklist/check", methods=["GET"])
     def check_ip():
         ip = request.args.get("ip")
         db = get_db()
         
-        # Cari IP yang status is_active-nya masih 1
+        # 1. Bersihkan yang sudah expired dulu
+        db.execute("""
+            UPDATE blacklist_ip 
+            SET is_active = 0 
+            WHERE is_active = 1 AND expires_at < DATETIME('now', '+8 hours')
+        """)
+        db.commit()
+
+        # 2. Cek apakah IP masih aktif diblokir
         row = db.execute(
-            "SELECT reason FROM blacklist_ip WHERE ip = ? AND is_active = 1", 
+            "SELECT reason, total_hits FROM blacklist_ip WHERE ip = ? AND is_active = 1", 
             (ip,)
         ).fetchone()
         
         if row:
-            return {"is_active": True, "reason": row["reason"]}, 200
+            # 3. LOGIKA TAMBAHAN: Jika dia mencoba akses saat diblokir, 
+            # tambahkan hit dan perpanjang waktu (misal tambah 10 detik lagi)
+            db.execute("""
+                UPDATE blacklist_ip 
+                SET total_hits = total_hits + 1,
+                    last_seen = DATETIME('now', '+8 hours'),
+                    expires_at = DATETIME(expires_at, '+10 seconds')
+                WHERE ip = ? AND is_active = 1
+            """, (ip,))
+            db.commit()
+
+            return jsonify({
+                "is_blocked": True, 
+                "reason": row["reason"],
+                "total_hits": row["total_hits"] + 1 # Mengirim jumlah hit terbaru
+            }), 200
         
-        return {"is_active": False}, 200
+        return jsonify({"is_blocked": False}), 200
 
 
     @app.route("/api/blacklist/stats")
@@ -168,73 +289,28 @@ def register_api(app):
             "expired": row["expired"] or 0
         })
 
-
-
     # ============================
-    # API: POST Log
+    # API: POST Log & Auto-Blacklist
     # ============================
     @app.route("/log", methods=["POST"])
     def receive_log():
         data = request.get_json()
-        attack_type = data.get("reason")
         client_ip = data.get("ip")
+        attack_type = data.get("reason")
+        
+        # Cukup panggil helper agar durasi blokirnya SAMA dengan /api/screen
+        duration = _process_blacklist(client_ip, attack_type)
+
+        # Simpan detail ke tabel logs untuk dashboard
         db = get_db()
-
-        # Ubah is_active jadi 0 jika sudah lewat dari waktu expires_at
-        db.execute("""
-            UPDATE blacklist_ip 
-            SET is_active = 0 
-            WHERE is_active = 1 AND expires_at < DATETIME('now', '+8 hours')
-        """)
-
-        # 1. Ambil data blacklist terakhir (meskipun sudah tidak aktif/is_active=0)
-        # Ini penting agar kita tahu ini pelanggaran ke-berapa bagi IP tersebut
-        history = db.execute(
-            "SELECT total_hits FROM blacklist_ip WHERE ip = ? ORDER BY id DESC LIMIT 1", 
-            (client_ip,)
-        ).fetchone()
-
-        # Tentukan jumlah pelanggaran (jika belum pernah, maka 1)
-        violation_count = (history["total_hits"] + 1) if history else 1
-
-        base_minutes = 10
-        total_duration_minutes = base_minutes * violation_count
-
-        if attack_type:
-            existing = db.execute(
-                "SELECT id FROM blacklist_ip WHERE ip = ? AND is_active = 1", 
-                (client_ip,)
-            ).fetchone()
-
-            if not existing:
-                # INSERT Baru dengan durasi dinamis
-                db.execute(f"""
-                    INSERT INTO blacklist_ip (
-                        ip, reason, blocked_at, expires_at, blocked_by, is_active, total_hits, last_seen
-                    )
-                    VALUES (?, ?, DATETIME('now','+8 hours'), 
-                    DATETIME('now','+8 hours', '+{total_duration_minutes} seconds'), 
-                    'WAF-System', 1, ?, DATETIME('now','+8 hours'))
-                """, (client_ip, attack_type, violation_count))
-            else:
-                # UPDATE Hits dan Perpanjang Durasi jika dia menyerang lagi saat masih diblokir
-                db.execute(f"""
-                    UPDATE blacklist_ip 
-                    SET total_hits = total_hits + 1, 
-                        last_seen = DATETIME('now','+8 hours'),
-                        expires_at = DATETIME(expires_at, '+{base_minutes} seconds') 
-                    WHERE ip = ? AND is_active = 1
-                """, (client_ip,))
-
-        # 3. Simpan Log (seperti biasa)
         db.execute("""
             INSERT INTO logs (timestamp, ip, path, full_url, method, status, payload_preview, reason, user_agent)
             VALUES (DATETIME('now','+8 hours'), ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (client_ip, data.get("url"), data.get("full_url"), data.get("method"), 
-            data.get("status"), str(data.get("payload"))[:200], attack_type, data.get("ua")))
-        
+        """, (client_ip, data.get("url"), data.get("full_url"), data.get("method"), data.get("status"), str(data.get("payload"))[:200], attack_type, data.get("ua")))
         db.commit()
-        return {"status": "success", "duration_added": total_duration_minutes}, 200
+        
+        return {"status": "success", "duration_added": duration}, 200
+    
 
     @app.route("/api/stats/requests")
     def stats_requests():
@@ -330,7 +406,6 @@ def register_api(app):
 
         return jsonify({"status": "blocked", "ip": ip})
 
-
     @app.route("/api/blacklist/unblock", methods=["POST"])
     def api_unblock_ip():
         data = request.get_json()
@@ -370,6 +445,8 @@ def register_api(app):
         response.headers["Content-type"] = "text/csv"
         return response
 
+
+
     # LOGIN API (Simpan di sini agar satu grup dengan login_page)
     @app.route("/api/auth/login", methods=["POST"])
     def do_login():
@@ -387,6 +464,7 @@ def register_api(app):
             return jsonify({"status": "success"}), 200
         
         return jsonify({"status": "failed", "message": "Kredensial Salah"}), 401
+
 
     @app.route("/logout")
     def logout():

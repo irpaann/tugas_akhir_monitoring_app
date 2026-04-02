@@ -66,3 +66,20 @@ pre {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+/* Warna tab saat aktif (Gaya Lama yang Diperhalus) */
+.nav-link.active {
+    background-color: #e7f1ff !important; /* Biru sangat muda dari sidebar base kamu */
+    color: #0d6efd !important;           /* Teks biru tajam */
+    font-weight: 500;
+    border-radius: .375rem;
+}
+
+/* Warna icon saat aktif agar ikut menjadi biru */
+.nav-link.active i {
+    color: #0d6efd !important;
+}
+
+/* Menghilangkan hover saat sudah aktif agar tidak flicker */
+.nav-link.active:hover {
+    background-color: #e7f1ff;
+}

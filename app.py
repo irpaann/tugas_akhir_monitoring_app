@@ -29,19 +29,36 @@ def forbidden(e):
 # 2. MIDDLEWARE (Security Filter)
 # ==========================================
 
+# ==========================================
+# 2. MIDDLEWARE (Security Filter)
+# ==========================================
+
 @app.before_request
 def security_filter():
     path = request.path
-    # JANGAN memfilter path API dan Log agar komunikasi antar container lancar
-    if path.startswith('/static') or path.startswith('/api/') or path == '/log':
+    
+    # 1. Izinkan file statis (CSS/JS/Images) agar halaman blokir tampil rapi
+    if path.startswith('/static'):
         return
 
-    # Dashboard hanya memblokir jika IP penyerang mencoba mengakses halaman Dashboard itu sendiri
-    db = get_db()
+    # 2. Ambil IP Client
     client_ip = request.remote_addr
-    blocked = db.execute("SELECT reason FROM blacklist_ip WHERE ip = ? AND is_active = 1", (client_ip,)).fetchone()
+    # Jika menggunakan Docker/Nginx, pastikan mendapatkan IP asli:
+    # client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+
+    db = get_db()
+    
+    # 3. Cek apakah IP aktif di blacklist DAN belum expired
+    # Gunakan pengecekan waktu agar IP otomatis lepas blokir setelah 10/20/30 detik
+    blocked = db.execute("""
+        SELECT reason FROM blacklist_ip 
+        WHERE ip = ? AND is_active = 1 
+        AND expires_at > DATETIME('now', '+8 hours')
+    """, (client_ip,)).fetchone()
     
     if blocked:
+        # Jika IP diblokir, JANGAN izinkan akses ke mana pun kecuali halaman statis
+        # Termasuk memblokir akses ke /api/ dan halaman lainnya
         abort(403, description=blocked['reason'])
 
 # ==========================================
