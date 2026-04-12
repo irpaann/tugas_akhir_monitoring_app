@@ -17,7 +17,7 @@ def register_api(app):
     # Fungsi ini ditaruh di sini agar bisa digunakan oleh /api/screen
     # ============================================================
     def _process_blacklist(client_ip, attack_type):
-        if client_ip == "10.210.1.23":
+        if client_ip == "10.94.162.95":
             print(f"[DEBUG] IP {client_ip} Terdeteksi menyerang ({attack_type}), tapi tidak diblacklist karena Whitelist Testing.")
             return 0 # Langsung keluar dari fungsi tanpa simpan ke DB blacklist
         # --------------------------------------------
@@ -78,9 +78,15 @@ def register_api(app):
         # 2. Panggil Security Engine (SEKARANG KIRIM 5 PARAMETER: TAMBAH time_diff)
         status, reason, threat_score = engine.analyze(path, payload, ua, method, time_diff)
         
-        # [DEBUG] Tampilkan di terminal
-        print(f"[SCREEN] IP: {client_ip} | Status: {status} | Score: {threat_score}% | Reason: {reason} | TimeDiff: {time_diff}s")
-
+        # [DEBUG] Tampilan Terminal yang Lebih Rapi
+        print("\n" + "─"*50)
+        print(f"📊 REPORT UNTUK IP: {client_ip}")
+        print("─"*50)
+        print(f"🔹 Status    : {status}")
+        print(f"🔹 Score     : {threat_score}%")
+        print(f"🔹 Reason    : {reason}")
+        print(f"🔹 Time Diff : {time_diff}s")
+        print("─"*50 + "\n")
         # 2. Simpan ke database logs (TAMBAHKAN threat_score DI SINI)
         db.execute("""
             INSERT INTO logs (timestamp, ip, path, full_url, method, status, payload_preview, reason, user_agent, threat_score)
