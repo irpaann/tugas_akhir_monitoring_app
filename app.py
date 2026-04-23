@@ -1,4 +1,5 @@
 import os
+import logging
 from flask import Flask, request, abort, render_template
 from db import close_db, init_db_command, get_db
 from dotenv import load_dotenv 
@@ -12,7 +13,8 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
-
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 # ==========================================
 # 1. KONFIGURASI & INISIALISASI
@@ -24,10 +26,6 @@ init_db_command(app)
 def forbidden(e):
     """Handler khusus untuk menampilkan halaman blokir."""
     return render_template('pages/blocked.html', reason=e.description), 403
-
-# ==========================================
-# 2. MIDDLEWARE (Security Filter)
-# ==========================================
 
 # ==========================================
 # 2. MIDDLEWARE (Security Filter)

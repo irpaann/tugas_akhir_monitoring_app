@@ -1,4 +1,4 @@
-from flask import request, jsonify, session, redirect, url_for, make_response
+from flask import app, request, jsonify, session, redirect, url_for, make_response
 from models.rule_engine import check_rule_based
 from datetime import datetime, timedelta
 from utils.security_engine import SecurityEngine
@@ -17,7 +17,7 @@ def register_api(app):
     # Fungsi ini ditaruh di sini agar bisa digunakan oleh /api/screen
     # ============================================================
     def _process_blacklist(client_ip, attack_type):
-        if client_ip == "10.94.162.95":
+        if client_ip == "10.28.175.127":
             print(f"[DEBUG] IP {client_ip} Terdeteksi menyerang ({attack_type}), tapi tidak diblacklist karena Whitelist Testing.")
             return 0 # Langsung keluar dari fungsi tanpa simpan ke DB blacklist
         # --------------------------------------------
@@ -43,8 +43,6 @@ def register_api(app):
         db.commit()
         return total_duration
     
-    # 3. TAHAP 1-3: SCREENING API (INTI SKRIPSI KAMU)
-    # ============================================================
     @app.route("/api/screen", methods=["POST"])
     def api_screen():
         data = request.get_json()
@@ -56,61 +54,49 @@ def register_api(app):
         full_url = data.get("full_url", "")
 
         db = get_db()
-        # 1. Ambil waktu request terakhir dari IP ini
         last_log = db.execute("SELECT timestamp FROM logs WHERE ip = ? ORDER BY id DESC LIMIT 1", (client_ip,)).fetchone()
 
-        time_diff = 0.0
-
+        # ==========================================================
+        # 🛠️ ANTI FALSE-POSITIVE FIX
+        # Default aman: 5.0 detik (Kecepatan wajar manusia)
+        # ==========================================================
+        time_diff = 5.0 
+        
         if last_log:
             try:
-                # Format dari SQLite biasanya string: 'YYYY-MM-DD HH:MM:SS'
                 last_time = datetime.strptime(last_log["timestamp"], "%Y-%m-%d %H:%M:%S")
-                # Waktu sekarang disamakan dengan format DB (waktu lokal + 8 jam jika merujuk kode Anda)
                 current_time = datetime.now()
-                time_diff = (current_time - last_time).total_seconds()
+                calculated_diff = (current_time - last_time).total_seconds()
                 
-                # Jika time_diff negatif karena pergeseran waktu, jadikan 0
-                if time_diff < 0: time_diff = 0.0 
+                # FILTER: Hanya gunakan waktu asli JIKA masih di rentang wajar (0.1 detik hingga 30 detik)
+                # Jika lebih dari 30 detik (kelamaan) atau negatif, paksa kembali ke 5.0 detik.
+                if 0.0 < calculated_diff <= 30.0:
+                    time_diff = calculated_diff
+                else:
+                    time_diff = 5.0 
+                    
             except Exception as e:
-                print(f"[DEBUG] Error parsing waktu: {e}")
-                time_diff = 0.0
+                # Jika error membaca tanggal, fallback ke nilai aman, BUKAN 0.0
+                time_diff = 5.0
 
-        # 2. Panggil Security Engine (SEKARANG KIRIM 5 PARAMETER: TAMBAH time_diff)
+        # Panggil Security Engine (Sekarang time_diff dijamin bebas dari angka ekstrem)
         status, reason, threat_score = engine.analyze(path, payload, ua, method, time_diff)
         
-        # [DEBUG] Tampilan Terminal yang Lebih Rapi
-        print("\n" + "─"*50)
-        print(f"📊 REPORT UNTUK IP: {client_ip}")
-        print("─"*50)
-        print(f"🔹 Status    : {status}")
-        print(f"🔹 Score     : {threat_score}%")
-        print(f"🔹 Reason    : {reason}")
-        print(f"🔹 Time Diff : {time_diff}s")
-        print("─"*50 + "\n")
-        # 2. Simpan ke database logs (TAMBAHKAN threat_score DI SINI)
-        db.execute("""
-            INSERT INTO logs (timestamp, ip, path, full_url, method, status, payload_preview, reason, user_agent, threat_score)
-            VALUES (DATETIME('now','+8 hours'), ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            client_ip, 
-            path, 
-            full_url, 
-            method, 
-            "200" if status == "Normal" else "403", 
-            str(payload)[:200], 
-            reason if reason else "Normal", 
-            ua, 
-            threat_score # <-- Variabel baru dimasukkan ke DB
-        ))
-        db.commit()
+        # # [DEBUG] Tetap tampil di terminal agar kamu bisa pantau real-time
+        # print("\n" + "─"*50)
+        # print(f"📊 SCREENING REPORT: {client_ip}")
+        # print(f"🔹 Status: {status} | Score: {threat_score}%")
+        # print("─"*50)
 
-        # 3. Proses eksekusi (Blokir atau Izinkan)
+        # --- BAGIAN INSERT KE DB DIHAPUS DARI SINI ---
+        # Agar tidak terjadi duplikasi log.
+
         if status == "Attack":
             _process_blacklist(client_ip, reason) 
-            # Kembalikan skor juga agar script attacker kamu bisa mencetaknya
             return jsonify({"action": "BLOCK", "reason": reason, "threat_score": threat_score}), 200
             
         return jsonify({"action": "ALLOW", "threat_score": threat_score}), 200
+    
     # ============================
     # API: GET Logs
     # ============================
@@ -303,20 +289,32 @@ def register_api(app):
         data = request.get_json()
         client_ip = data.get("ip")
         attack_type = data.get("reason")
-        
-        # Cukup panggil helper agar durasi blokirnya SAMA dengan /api/screen
-        duration = _process_blacklist(client_ip, attack_type)
+        status_code = data.get("status")
+        threat_score = data.get("threat_score", 0) # Ambil skornya
 
-        # Simpan detail ke tabel logs untuk dashboard
+        # Jika ada serangan, jalankan proses blacklist
+        duration = 0
+        if status_code == 403 or threat_score > 70:
+            duration = _process_blacklist(client_ip, attack_type)
+
         db = get_db()
         db.execute("""
-            INSERT INTO logs (timestamp, ip, path, full_url, method, status, payload_preview, reason, user_agent)
-            VALUES (DATETIME('now','+8 hours'), ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (client_ip, data.get("url"), data.get("full_url"), data.get("method"), data.get("status"), str(data.get("payload"))[:200], attack_type, data.get("ua")))
+            INSERT INTO logs (timestamp, ip, path, full_url, method, status, payload_preview, reason, user_agent, threat_score)
+            VALUES (DATETIME('now','+8 hours'), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            client_ip, 
+            data.get("url"), 
+            data.get("full_url"), 
+            data.get("method"), 
+            status_code, 
+            str(data.get("payload"))[:200], 
+            attack_type, 
+            data.get("ua"),
+            threat_score
+        ))
         db.commit()
         
-        return {"status": "success", "duration_added": duration}, 200
-    
+        return {"status": "success"}, 200
 
     @app.route("/api/stats/requests")
     def stats_requests():
